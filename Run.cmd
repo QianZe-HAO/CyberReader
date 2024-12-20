@@ -1,0 +1,1 @@
+powershell -File ".\Run.ps1"
