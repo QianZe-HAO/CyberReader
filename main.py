@@ -1,23 +1,17 @@
+import os
 import streamlit as st
 from langchain_community.document_loaders import PyPDFLoader
 import pandas as pd
 from utils.upload_files import handle_file_upload
 from utils.delete_all_files import handle_file_delete
-import os
-from langchain_google_genai import ChatGoogleGenerativeAI
+from robot.chatmodel import get_chat_response
+import uuid
 
 
 # ---------- Define Folder Paths ---------------------------
 save_folder = "./store"
 
-# --------------- Network Configuration --------------------
-# if using v2rayn as proxy, set the following environment variables
-os.environ["HTTP_PROXY"] = "http://127.0.0.1:10809"
-os.environ["HTTP_PROXYS"] = "http://127.0.0.1:10809"
 
-api_key = 'xxxxxxxxxxxxxxxxxxx'
-model = 'gemini-1.5-flash'
-chat = ChatGoogleGenerativeAI(model=model, google_api_key=api_key)
 # ----------------- Main Streamlit App ---------------------
 st.set_page_config(page_title="Cyber Reader",
                    page_icon="./static/icon/cyberhammer.webp", layout="wide")
@@ -44,29 +38,6 @@ else:
     st.sidebar.warning("No files uploaded yet.")
 
 
-# ----------------- Document Processing ---------------------
-st.sidebar.markdown("### Document Processing")
-
-if "references" not in st.session_state:
-    st.session_state["references"] = ''
-
-doc_full = ''
-if st.sidebar.button("Process Document", use_container_width=True) and len(uploaded_files_list) > 0:
-    # Load the PDF document
-    pdf_paths = [os.path.join(save_folder, file)
-                 for file in uploaded_files_list]
-    # print(pdf_paths)
-
-    for pdf_path in pdf_paths:
-        loader = PyPDFLoader(pdf_path)
-        docs = loader.load()
-        for doc in docs:
-            doc_full += doc.page_content
-
-    # print(doc_full)
-    st.session_state["references"] = doc_full
-
-
 # ---------------- add Chat Part ---------------------------
 st.caption("🚀 A Super chatbot powered by Cyber. Based on AI Agent, it is more in line with cybernetics and ergonomics")
 
@@ -79,14 +50,48 @@ if "messages" not in st.session_state:
 for msg in st.session_state['messages']:
     st.chat_message(msg["role"]).write(msg["content"])
 
+if 'thread_id' not in st.session_state:
+    st.session_state['thread_id'] = str(uuid.uuid4())
+
 
 if prompt := st.chat_input():
     st.chat_message("user").write(prompt)
     st.session_state["messages"].append({"role": "user", "content": prompt})
 
-    if len(st.session_state["references"]) > 0:
-        prompt = st.session_state["references"] + prompt
+    res = get_chat_response(prompt, st.session_state['thread_id'])
 
-    res = chat.invoke(prompt)
-    st.chat_message("assistant").write(res.content)
-    st.session_state["messages"].append({"role": "assistant", "content": res.content})
+    st.chat_message("assistant").write(res['answer'])
+    st.session_state["messages"].append(
+        {"role": "assistant", "content": res['answer']})
+
+# ----------------- Document Processing ---------------------
+st.sidebar.markdown("### Document Processing")
+
+if "references" not in st.session_state:
+    st.session_state["references"] = ''
+
+if st.sidebar.button("Process Document", use_container_width=True) and len(uploaded_files_list) > 0:
+    doc_full = ''
+    # Load the PDF document
+    pdf_paths = [os.path.join(save_folder, file)
+                 for file in uploaded_files_list]
+    # print(pdf_paths)
+
+    for pdf_path in pdf_paths:
+        loader = PyPDFLoader(pdf_path)
+        docs = loader.load()
+        for doc in docs:
+            doc_full += doc.page_content
+
+    # print(doc_full)
+    st.session_state["references"] = 'I just upload a document for you, please answer my question based on the doc content: \n\n' + doc_full + '\n\n'
+
+    res = get_chat_response(
+        st.session_state["references"], st.session_state['thread_id'])
+
+    st.chat_message("user").write('Upload files!')
+    st.chat_message("assistant").write(res['answer'])
+    st.session_state["messages"].append(
+        {"role": "user", "content": 'Upload files!'})
+    st.session_state["messages"].append(
+        {"role": "assistant", "content": res['answer']})
